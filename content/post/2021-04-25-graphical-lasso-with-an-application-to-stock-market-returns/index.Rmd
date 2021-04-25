@@ -28,12 +28,6 @@ require(glasso)
 require(igraph)
 ```
 
-## Intro
-
-This is the first post by student-w, a suitable pseudonym for a statistician. Note that these
-blog posts will typically be written while I´m learning a particular topic, such that it should 
-not be taken as an authoritarian source of truth, but suitably correlated with the truth. 
-
 ## Graphical Models
 
 Graphical models are not models in the standard usage of the word, but a 
@@ -61,8 +55,8 @@ knitr::include_graphics('/images/regression_model_graph.png', error = F)
 
 In a (directed) graphical model, the dependence structure is encoded by (directed) edges. In this case, 
 the arrows imply that $Y$ depends on all the covariates. To build up the intuition for the graphical 
-lasso, we can think of how we can enforce sparsity in this graph. This is exactly what the classical 
-lasso regression by Tibshirani et. al does, by including a penalty on the $\beta$-parameters!
+lasso, we can think of how we can enforce sparsity in this simpler setting. By removing some of these edges, the result is that the corresponding $X$ does not influence $Y$. This is exactly what the classical 
+lasso regression by Tibshirani (1996), by including a penalty on the $\beta$-parameters!
 
 The famous lasso model can be formulated as $$\mathrm{argmin}_{\beta} (Y - X\beta)^t(Y - X\beta) + \lambda |\beta|,$$ and since this penalty leads to some zeroes in our $\beta$-parameter vector, this 
 can be interpreted as the corresponding variables having no edge into $Y$, thus introducing sparsity in the graph.
@@ -188,7 +182,7 @@ $$\min_{\beta} \frac{1}{2}||W_{11}^{1/2}\beta - b||^2 + \rho||\beta||_1,$$ where
 
 An interesting application is to estimate a graphical structure over the daily returns of the stocks comprising the Oslo Stock Exchange. In other words, we want to investigate which companies have correlated movements. Correlation analysis of stock movements is probably among the oldest quantitative investment strategies, and while you may not become the new Jim Simons by applying the graphical lasso instead of the usual correlation matrix, there are benefits in taking this approach. Perhaps the main benefit, which we have discussed earlier, is that the estimated correlation takes into account all other variables. 
 
-We have available price data on a selection of the companies listed on Oslo Stock Exchange. In the code below we read the daily price data for a selection of companies, and plot the movements. 
+We have available price data on a selection of the companies listed on Oslo Stock Exchange:
 
 ```{r, message=FALSE, warning=FALSE}
 #Read in the stock prices and calculate the daily change & returns, and remove NA
@@ -237,4 +231,4 @@ stock_graph <- graph_from_adjacency_matrix(parr.corr, mode="undirected", weighte
 plot(stock_graph)
 ```
 
-The graphical lasso has managed to extract two main clusters, which are the oil & gas related companies, and the seafood companies, which is exactly the type of knowledge we want to extract with this method. Further, both Storebrand and DNB is included in the oil & gas cluster, which is perhaps a bit surprising. One explanation might be that large and stable companies are counter-cyclical to the boom-and-bust oil & gas sector, meaning that money tends to move to safe harbors in volatile times. If this is the correct explanation, the movements of Storebrand and DNB should move in the opposite direction to the general oil & gas markets after controlling for the general market movement.
+The graphical lasso has managed to extract two main clusters, which are the oil & gas related companies, and the seafood companies, which is exactly the type of knowledge we want to extract with this method. Further, both Storebrand and DNB is included in the oil & gas cluster, which is perhaps a bit surprising. One explanation might be that large and stable companies are counter-cyclical to the boom-and-bust oil & gas sector, meaning that money tends to move to safe harbors in volatile times. If this is the correct explanation, the movements of Storebrand and DNB should be negatively correlated to the general oil & gas markets after controlling for the general market movement.
