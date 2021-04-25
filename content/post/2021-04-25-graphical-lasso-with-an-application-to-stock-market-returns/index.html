@@ -8,9 +8,25 @@ categories:
 tags:
   - Applications
   - Statistical Methods
+output:
+  blogdown::html_page:
+    toc: true
 ---
 
 
+<div id="TOC">
+<ul>
+<li><a href="#intro">Intro</a></li>
+<li><a href="#graphical-models">Graphical Models</a><ul>
+<li><a href="#sparse-regression-models">Sparse regression models</a></li>
+<li><a href="#partial-correlation">Partial correlation</a></li>
+<li><a href="#partial-correlation-whats-the-use">Partial correlation… Whats the use?</a></li>
+<li><a href="#last-ingredient---the-pairwise-markov-property">Last ingredient - the pairwise Markov Property</a></li>
+</ul></li>
+<li><a href="#the-graphical-lasso">The graphical lasso</a></li>
+<li><a href="#application-to-the-oslo-stock-exchange">Application to the Oslo Stock Exchange</a></li>
+</ul>
+</div>
 
 <pre class="r"><code>require(ggpubr)
 require(tidyverse)
