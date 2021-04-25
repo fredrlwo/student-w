@@ -1,0 +1,237 @@
+---
+title: Graphical lasso with an application to stock market returns
+author: Fredrik Wollbraaten
+date: '2021-04-25'
+slug: graphical-lasso-with-an-application-to-stock-market-returns
+categories:
+  - blog
+tags:
+  - Applications
+  - Statistical Methods
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_libraries, message=FALSE}
+require(ggpubr)
+require(tidyverse)
+require(latex2exp)
+require(stringr)
+require(lubridate)
+require(ggrepel)
+require(glasso)
+require(igraph)
+```
+
+## Intro
+
+This is the first post by student-w, a suitable pseudonym for a statistician. Note that these
+blog posts will typically be written while I´m learning a particular topic, such that it should 
+not be taken as an authoritarian source of truth, but suitably correlated with the truth. 
+
+## Graphical Models
+
+Graphical models are not models in the standard usage of the word, but a 
+framework for separating the data model and the dependence structure among $p$ 
+random variables. The dependence structure in our data is important because it is
+not only the number of observations in our datasets that gets larger and 
+larger every year, but also the number of random variables. Further, the dependence 
+among these variables are by implication also more complex because the number of 
+ways the variables can depend on each other grows. 
+
+In a setting where we know nothing about the random variables except that they are continuous 
+and approximately Gaussian, a naive approach is to assume multivariate normality, and estimate a 
+covariance matrix consisting of $\mathcal{O}(p^2)$ parameters. This becomes unstable for relatively modest $p$. Thus, we require sparsity in the covariance matrix to obtain stable estimates. Additionally, we 
+usually want sparsity to be able to interpret our model. But, how do we simultaneously obtain 
+an estimate of the covariance matrix while enforcing sparsity?
+
+### Sparse regression models
+
+Consider a regression setting where we have a column vector of observations $Y$($1\times n$) and covariates 
+$X$($n\times p$), and assume that $Y = X\beta + \epsilon$ is a reasonable model. We can cast this model in the graphical model framework:
+
+```{r, include=TRUE, fig.align="center", echo = FALSE}
+knitr::include_graphics('/images/regression_model_graph.png', error = F)
+```
+
+In a (directed) graphical model, the dependence structure is encoded by (directed) edges. In this case, 
+the arrows imply that $Y$ depends on all the covariates. To build up the intuition for the graphical 
+lasso, we can think of how we can enforce sparsity in this graph. This is exactly what the classical 
+lasso regression by Tibshirani et. al does, by including a penalty on the $\beta$-parameters!
+
+The famous lasso model can be formulated as $$\mathrm{argmin}_{\beta} (Y - X\beta)^t(Y - X\beta) + \lambda |\beta|,$$ and since this penalty leads to some zeroes in our $\beta$-parameter vector, this 
+can be interpreted as the corresponding variables having no edge into $Y$, thus introducing sparsity in the graph.
+
+Regression models are a bit special as graphical models, in that we have a very strong assumption on the graphical structure (the edges) and that we only care about the conditional distribution of $p(Y|X)$, not the joint distribution $P(Y, X)$. Thus, to generalize the estimation of sparse graphs in a full joint 
+distribution of $p$ variables $X_1, ..., X_p$, we need a parameterisation where parameters 
+estimated to be 0 corresponds to reducing the number of dependencies in a graph. 
+
+### Partial correlation
+
+It turns out that the idea of partial correlation is very helpful. In $\mathbb{R}^3$, the partial 
+correlation between $X_1$ and $X_2$ given $X_3$, is the correlation between $e_{x_1}$ and $e_{x_2}$ - the residuals when regressing $X_1$ on $X_3$ and $X_2$ on $X_3$. Lets do a small simulation 
+to get a feeling of the idea.
+
+```{r }
+set.seed(2021)
+#Covariance matrix
+cov <- matrix(c(1, 0.2, 0.8,
+                0.2, 1, 0.1,
+                0.8, 0.1, 1), byrow = T, ncol = 3)
+#Simulate x_1, x_2, x_3 from multivariate normal
+X <- mvtnorm::rmvnorm(1e3, mean = rep(0, 3), sigma = cov)
+colnames(X) <- c("x1", "x2", "x3")
+X <- data.frame(X)
+```
+
+We regress $X_1$ on $X_3$ and $X_2$ on $X_3$, and then plot the scaled (such that correlation = slope) residuals $e_{x_1}/\mathrm{sd}(e_{x_1})$ against $e_{x_2}/\mathrm{sd}(e_{x_2})$ with the accompanying linear model:
+```{r, message=FALSE}
+lm_1 <- lm(x1 ~ x3, data = X)
+e_x1 <- residuals(lm_1)
+lm_2 <- lm(x2 ~ x3, data = X)
+e_x2 <- residuals(lm_2)
+
+residuals.df <- tibble(e_x1 = e_x1, e_x2 = e_x2) %>% mutate(e_x1 = e_x1/sd(e_x1), e_x2 = e_x2/sd(e_x2))
+ggplot(data = residuals.df, aes(x = e_x1, y = e_x2)) +
+  geom_point() +
+  geom_smooth(method = "lm", ) +
+  stat_regline_equation(label.y = 3, aes(label = ..eq.label..)) +
+  xlab(TeX("$e_{x_1}$")) +
+  ylab(TeX("$e_{x_2}$"))
+```
+
+We obtain a partial correlation estimate of $\hat\rho_{x_1 x_2 \cdot x_3} = 0.22$. With three variables
+the partial correlation is easily available as $$\rho_{x_1 x_2 \cdot x_3} = \frac{\rho_{x_1 x_2} - \rho_{x_1 x_3}\rho_{x_2 x_3}}{\sqrt{1 - \rho_{x_1 x_3}^2} \sqrt{1 - \rho_{x_2 x_3}^3}}.$$ We calculate using the known covariance matrix, which is equal to the correlation matrix due to the unit standard deviations:
+```{r }
+round((cov[1, 2] - cov[1, 3]*cov[2, 3])/(sqrt(1 - cov[1, 3]^2)*sqrt(1 - cov[2, 3]^2)), 1)
+```
+In statistics, $0.24 \approx 0.20$ so we seem to have gotten it right. 
+
+### Partial correlation... Whats the use?
+
+To get an idea for why partial correlation can be useful in estimating sparse graphs, we can 
+try to make sense of what a partial correlation close to 0 means. A partial correlation close to 0 implies that when we account for all other (relevant) variables $Z$, $X_1$ and $X_2$ is uncorrelated. 
+
+A stock market analogy might be two a priori unrelated companies, say FaceBook ($X_1$) and BP ($X_2$), whose returns are correlated when we do not account for 'the market'($X_3$), but uncorrelated when we account for the market (have not actually checked, though). 
+
+When a partial correlation is close to 1, there is some residual relationship between $X_1$ and $X_2$ even if we account for $X_3$. This implies that there is a direct relationship between these variables.
+
+Another stock market analogy may be the daily returns of two oil companies Aker BP ($X_1$) and Equinor ($X_2$), which of course is correlated without accounting for the market, but also when we account for the market. The idea here is that there is some 'oil market' specific driver which is still present after accounting for the general market. 
+
+As usual, the normal distribution has magical properties. In this case, the magical property is the equivalence between 0 partial correlation and conditional independence; 
+$$
+\rho_{x y \cdot z} = 0 \iff X \perp Y | Z \quad\text{(1)}
+$$
+
+where $Z = \mathcal{X}\setminus\{X, Y\}$ and $\mathcal{X} = X \cup Y \cup Z$.
+In words, $X$ and $Y$ are conditionally independent given all other variables if and only if the partial correlation given all other variables is 0. This is trivial to show in the $p = 3$ setting. Assume 
+$$
+\begin{pmatrix}
+X_1 \\
+X_2 \\
+X_3
+\end{pmatrix}
+\sim
+\mathcal{N}
+\begin{pmatrix}
+\mu_1 \\
+\mu_2 \\
+\mu_3
+\end{pmatrix} 
+\begin{pmatrix}
+\sigma_1^2 & \rho_{12}\sigma_1 \sigma_2 & \rho_{13}\sigma_1 \sigma_3 \\
+\rho_{12}\sigma_1 \sigma_2 & \sigma_2^2 & \rho_{23}\sigma_2 \sigma_3 \\
+\rho_{13}\sigma_1 \sigma_3 & \rho_{23}\sigma_2 \sigma_3 & \sigma_3^3
+\end{pmatrix}
+$$
+and calculate the conditional distribution $(X_1, X_2)^T|X_3 = x_3$. Conditional distributions are simple in the multivariate normal setting, see [Wikipedia](https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions). By carrying out the calculations we obtain the conditional distribution $(X_1, X_2)^T|X_3 = x_3$, which is
+again normal, with a certain mean (again, see Wikipedia), but more importantly the conditional covariance between $X_1$ and $X_2$ is $$\sigma_1 \sigma_2(\rho_{12} - \rho_{13}\rho_{23}).$$ 
+
+Further, the partial correlation between two variables is a function of $$\rho_{12} - \rho_{13}\rho_{23}$$ when $X_3$ is a single variable. Then, in the $p = 3$ setting, we see that the covariance between $X_1$ and $X_2$ given $X_3 = x_3$ is 0 when the partial correlation is 0 and vice versa, showing the equivalence (1). Higher dimensions require more tedious matrix calculations. 
+
+### Last ingredient - the pairwise Markov Property
+
+We need one more ingredient to connect the concepts of sparse estimation of graphical models and 0 partial correlation. In the previous section, we showed that when the partial correlation between two variables given the rest is 0, we have conditional independence of the two variables given the rest. In undirected graphical models, conditional independence of two variables given the rest is related to the *pairwise Markov property*:
+$$
+\text{An edge between X and Y is absent } \iff X\perp Y | Z
+$$
+
+
+The main point is that if two variables are conditionally independent given all other variables, there should be no edge between them in an undirected graphical model. This gives us a recipe for constructing *a* graphical model for $X_1, ..., X_p$, by constructing a sparse estimate of the inverse covariance matrix and adding an edge between $X_i$ and $X_j$ if the corresponding partial correlation is non-zero. 
+
+## The graphical lasso
+
+When we know the relationship between the multivariate normal distribution, partial correlations, the pairwise Markov property and undirected graphical models, the graphical lasso is rather simple. 
+
+The method assumes that the data are multivariate normal, and maximize the log likelihood with a lasso penalty on the partial correlations. The partial correlations actually uniquely identifies the covariance matrix; they are proportional to the entries in the inverse covariance matrix, also called the precision matrix. The partial correlations which are estimated to be 0 corresponds to having no edge between the variables in the undirected graphical model - thus achieving sparsity. This optimization problem is not trivial, so of equal importance is the algorithm they produce which is orders of magnitude faster than similar approaches. 
+
+We will include some details on the algorithm. The penalized log likelihood of $n$ assumed normal vectors $X_i$ can be written as $$\ell(\Theta) = \log \det{\Theta} - \mathrm{Tr}(S \Theta) - \rho ||\Theta||_1$$ where $\Theta = \Sigma^{-1}$, i.e the precision matrix, $S$ being the empirical covariance matrix and $||\cdot||_1$ is an $\ell_1$-norm. Remember that our goal is sparse estimation of $\Theta$. If we let $W$ be our current estimate of $\Theta$, we can write $W$ and $\Theta$ in a partitioned format
+$$W = 
+\begin{pmatrix}
+W_{11} & w_{12}\\
+w_{12}^T & w_{22}
+\end{pmatrix},\quad S = 
+\begin{pmatrix}
+S_{11} & s_{12}\\
+s_{12}^T & s_{22}
+\end{pmatrix}.
+$$
+Here, $W_{11}$ and $S_{11}$ is of size $(p-1) \times (p - 1)$, $w_{12}$ and $s_{12}$ is of size $(p-1)\times 1$, and finally $w_{22}$ and $s_{22}$ is $1 \times 1$. The idea here is that given $W_{11}$, the solution to $w_{12}$ is found by first solving:
+$$\min_{\beta} \frac{1}{2}||W_{11}^{1/2}\beta - b||^2 + \rho||\beta||_1,$$ where $b = W_{11}^{-1/2}s_{12}.$ Then $w_{12} = W_{11}\beta$. This is another reason for discussing lasso regression earlier; this looks very similar to a lasso problem! The complete algorithm is simply choosing a starting $W$, and cycle through and update $w_{12}$ by the lasso problem until all parameters of $W$ converge. 
+
+# Application to the Oslo Stock Exchange
+
+An interesting application is to estimate a graphical structure over the daily returns of the stocks comprising the Oslo Stock Exchange. In other words, we want to investigate which companies have correlated movements. Correlation analysis of stock movements is probably among the oldest quantitative investment strategies, and while you may not become the new Jim Simons by applying the graphical lasso instead of the usual correlation matrix, there are benefits in taking this approach. Perhaps the main benefit, which we have discussed earlier, is that the estimated correlation takes into account all other variables. 
+
+We have available price data on a selection of the companies listed on Oslo Stock Exchange. In the code below we read the daily price data for a selection of companies, and plot the movements. 
+
+```{r, message=FALSE, warning=FALSE}
+#Read in the stock prices and calculate the daily change & returns, and remove NA
+#values, which are primarily the prices for companies on dates before 
+#they were listed on Oslo Stock Exchange. 
+stocks <- read_csv("obx.csv") %>% mutate(Date = dmy(Date)) %>% 
+  mutate_if(is.character, as.double) %>%  
+  pivot_longer(cols = !Date, names_to = "Comp", values_to = "Price") %>%
+  mutate(Price = Price/100) %>% group_by(Comp) %>% arrange(Date) %>% mutate(Change = Price - lag(Price)) %>%   mutate(Return = Change/lag(Price)) %>% ungroup() %>% filter(!is.na(Price))
+
+#Plotting the price movements..
+stocks_label <- stocks %>% group_by(Comp) %>% arrange(Date) %>% 
+  summarise(x = last(Date), y = last(Price), Comp = last(Comp))
+
+ggplot(stocks, aes(x = Date, y = Price)) +
+  geom_line(aes(color = Comp))
+
+stocks_standardized <- stocks %>% group_by(Comp) %>% mutate(Return = (Return - mean(Return, na.rm = TRUE))/sd(Return, na.rm = TRUE))
+
+stocks_matrix <- stocks_standardized %>% pivot_wider(id_cols = Date, names_from = Comp, values_from = Return) %>% select(-Date) %>% as.matrix()
+cov_mat <- cov(stocks_matrix, use = "pairwise.complete.obs")
+```
+Lets apply the graphical lasso to the mean-centered and standardized returns. The estimation is carried out by the *glasso*-package and creating the graph is done through the *igraph*-package. We choose the penalty parameter $\rho = 0.45$, somewhat ad-hoc, in practice we would probably apply cross-validation. 
+
+```{r}
+S <- cov_mat #Sample covariance matrix
+rho <- 0.45 #Penalty on partial correlations
+invcov <- glasso(S, rho=rho)  
+P <- invcov$wi
+colnames(P) <- colnames(S)
+rownames(P) <- rownames(S)
+
+parr.corr <- matrix(nrow=nrow(P), ncol=ncol(P))
+for(k in 1:nrow(parr.corr)) {
+  for(j in 1:ncol(parr.corr)) {
+    parr.corr[j, k] <- -P[j,k]/sqrt(P[j,j]*P[k,k])
+  }
+}
+colnames(parr.corr) <- colnames(P)
+rownames(parr.corr) <- colnames(P)
+diag(parr.corr) <- 0
+
+#Build network graph
+stock_graph <- graph_from_adjacency_matrix(parr.corr, mode="undirected", weighted = TRUE)
+
+plot(stock_graph)
+```
+
+The graphical lasso has managed to extract two main clusters, which are the oil & gas related companies, and the seafood companies, which is exactly the type of knowledge we want to extract with this method. Further, both Storebrand and DNB is included in the oil & gas cluster, which is perhaps a bit surprising. One explanation might be that large and stable companies are counter-cyclical to the boom-and-bust oil & gas sector, meaning that money tends to move to safe harbors in volatile times. If this is the correct explanation, the movements of Storebrand and DNB should move in the opposite direction to the general oil & gas markets after controlling for the general market movement.
