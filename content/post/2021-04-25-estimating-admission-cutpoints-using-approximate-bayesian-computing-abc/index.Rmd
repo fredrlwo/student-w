@@ -11,9 +11,9 @@ tags:
 ---
 
 Each year, tens of thousands of Norwegian (and foreign) students apply for admission 
-to college. Admission is mainly decided by the average grades of the students applying to 
-a particular programme. As an example, if 1,500 apply to the law programme at the University of Oslo with 
-230 places, then the top `r round(100*230/1500, 1)` % of the students in terms of points are admitted. 
+to college. Admission is mainly decided by the point score of the students applying to 
+a particular programme, which is mainly made up by the students grades. As an example, if 1,500 apply to the law programme at the University of Oslo with 
+230 places, then the top `r round(100*230/1500, 1)` % of the students in terms of points are admitted, and the admission cutpoint is the point score of this percentile. 
 
 Taking another view, if we consider the population of potential students applying to the programme, 
 the students with a point score above the $100\times(1500-230)/1500$ or `r round(100*(1500-230)/1500, 1)`-th percentile are admitted.
