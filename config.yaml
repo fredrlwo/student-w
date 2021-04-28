@@ -1,7 +1,9 @@
-baseurl: /
+baseurl: http://student-w.com/
 languageCode: en-us
 title: Student-w
 theme: hugo-lithium
+enableRobotsTXT: true
+canonifyURLs: true
 googleAnalytics: ''
 disqusShortname: ''
 ignoreFiles:
