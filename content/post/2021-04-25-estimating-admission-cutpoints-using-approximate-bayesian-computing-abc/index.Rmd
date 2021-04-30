@@ -81,7 +81,7 @@ prior_mu_1_mu <- 40 #Prior mean for the average point score in 2009
 prior_mu_1_sig <- 5 #Prior std.dev for the average point score in 2009
 delta_mu_sig <- 1 #Std.dev of the mu_t+1 - mu_t random walk prior
 
-sig_alpha <- 5
+sig_alpha <- 10
 sig_beta <- 1 #scale 
 
 iterations <- 1e4
@@ -103,7 +103,7 @@ acc_sigma <- c(NA)
 for(i in 1:iterations){
   mu[1] <- rnorm(1, prior_mu_1_mu, prior_mu_1_sig)
   mu[2:n_yrs] <- mu[1] + cumsum(rnorm(n_yrs - 1, 0, delta_mu_sig))
-  sigma <- rgamma(1, shape = 5, scale = 1)
+  sigma <- rgamma(1, shape = sig_alpha, scale = sig_beta)
   for(t in 1:n_yrs){
     y_t <- rnorm(a_t[t], mu[t], sigma)
     sim_c_t[t] <- quantile(y_t, q_t[t])
@@ -118,6 +118,14 @@ for(i in 1:iterations){
 
 post_mu <- colMeans(acc_mu, na.rm = TRUE)
 post_sigma <- mean(acc_sigma, na.rm = TRUE)
+est_admission <- tibble(est_ct = qnorm(p = q_t, mean = post_mu, sd = post_sigma), Year = 2009:2020)
 
-plot(2009:2020, post_mu)
+result_tib <- tibble(Year = 2009:2020, mu = post_mu, sd = post_sigma)
+ggplot(result_tib, aes(x = Year, y = mu)) +
+  #geom_line() +
+  #geom_line(aes(x = Year, y = mu - 3*sd), color = "red") +
+  #geom_line(aes(x = Year, y = mu + 3*sd), color = "red") +
+  geom_line(data = law, aes(x = y_t, y = c_t), linetype = "dotted") +
+  geom_line(data = est_admission, aes(x = Year, y = est_ct), linetype = "dashed")
+
 ```
