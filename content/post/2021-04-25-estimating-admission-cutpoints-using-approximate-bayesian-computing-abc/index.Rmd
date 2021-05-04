@@ -70,7 +70,9 @@ However, the choice of normally distributed point scores introduces an estimatio
 The solution is to use prior information. The first piece of prior information is that the mean point score of potential applicants is slowly varying from year to year, i.e we are smoothing the $\mu_t$-estimates. This is done by assuming a random walk on $\mu_t$:
 $$p(\mu_1) = \mathcal{N}(40, 5^2) \text{ and } p(\mu_{t+1}|\mu_t) = \mathcal{N}(\mu_t, \delta^2).$$ The second piece of prior information is that the variance $\sigma^2$ is equal for all years, with a prior distribution $p(\sigma)\sim\text{Gamma}(\alpha, \beta)$.
 
-Finally, we need to choose $\delta$ and $(\alpha, \beta)$. To choose $\delta$ we can take a look at the change of the average grade in high school between 2009 and 2020. Very roughly, the average grade has changed 0.5 over these 11 years, meaning that the point score has chaned on the order of $10\times 0.5 = 5$ points.
+Finally, we need to choose $\delta$ and $(\alpha, \beta)$. To choose $\delta$ we can take a look at the change of the average grade in high school between 2009 and 2020. Very roughly, the average grade has changed 0.5 over these 11 years, meaning that the point score has changed on the order of $10\times 0.5 = 5$ points. Since we only have aggregate data, we set $\delta$ by selecting the one which maximized the probability of seeing a change of 5 points in a normal density with mean 0 and standard deviation $\sqrt{11}\delta$. We maximize the log likelihood by setting the derivative equal to 0:
+$$-\frac{1}{2} \frac{d}{d\delta} \left(\log(2\pi 11\delta^2) + \frac{5^2}{11\delta^2}\right)=\frac{2(\delta^2 - 5^2)}{\delta^3}.$$ The $\delta$ which maximizes this expression is $\delta = \frac{5}{\sqrt{11}}\approx 1.5$
+
 
 ```{r, message=FALSE, warning=FALSE}
 require(tidyverse)
@@ -86,21 +88,21 @@ objective <- function(c, mu, sigma, a, s){
 
 prior_mu_1_mu <- 40 #Prior mean for the average point score in 2009
 prior_mu_1_sig <- 5 #Prior std.dev for the average point score in 2009
-delta_mu_sig <- 2 #Std.dev of the mu_t+1 - mu_t random walk prior
+delta_mu_sig <- 5/sqrt(11) #Std.dev of the mu_t+1 - mu_t random walk prior
 
 sig_alpha <- 10
 sig_beta <- 1 #scale 
 
-iterations <- 1e3
+iterations <- 1e4
 eps <- 3
 
-n_yrs <- 12
 a_t <- law %>% select(a_t) %>% pull()
 s_t <- law %>% select(s_t) %>% pull()
 c_t <- law %>% select(c_t) %>% pull()
 q_t <- (a_t - s_t)/a_t
 
-mu <- rep(0, 11)
+n_yrs <- 12
+mu <- rep(0, n_yrs)
 sim_c_t <- mu
 sigma <- 0
 
