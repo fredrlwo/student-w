@@ -70,17 +70,28 @@ However, the choice of normally distributed point scores introduces an estimatio
 The solution is to use prior information. The first piece of prior information is that the mean point score of potential applicants is slowly varying from year to year, i.e we are smoothing the $\mu_t$-estimates. This is done by assuming a random walk on $\mu_t$:
 $$p(\mu_1) = \mathcal{N}(40, 5^2) \text{ and } p(\mu_{t+1}|\mu_t) = \mathcal{N}(\mu_t, \delta^2).$$ The second piece of prior information is that the variance $\sigma^2$ is equal for all years, with a prior distribution $p(\sigma)\sim\text{Gamma}(\alpha, \beta)$.
 
-Finally, we need to choose $\delta$ and $(\alpha, \beta)$. To choose $\delta$ we can take a look at the change of the average grade in high school between 2009 and 2020. Very roughly, the average grade has changed 0.5 over these 11 years, meaning that the point score has changed on the order of $10\times 0.5 = 5$ points. Since we only have aggregate data, we set $\delta$ by selecting the one which maximized the probability of seeing a change of 5 points in a normal density with mean 0 and standard deviation $\sqrt{11}\delta$. We maximize the log likelihood by setting the derivative equal to 0:
-$$-\frac{1}{2} \frac{d}{d\delta} \left(\log(2\pi 11\delta^2) + \frac{5^2}{11\delta^2}\right)=\frac{2(\delta^2 - 5^2)}{\delta^3}.$$ The $\delta$ which maximizes this expression is $\delta = \frac{5}{\sqrt{11}}\approx 1.5$
+Finally, we need to choose $\delta$ and $(\alpha, \beta)$. Since the point scores of the students is determined mainly by the high school grades, we can use the standard deviation of the change in high school grades between 2009 and 2020 to determine $\delta$. Very roughly, the average grade has changed 0.5 over these 11 years, meaning that the point score has changed on the order of $10\times 0.5 = 5$ points. Since we only have aggregate data, we set $\delta$ by selecting the one which maximized the probability of seeing a change of 5 points in a normal density with mean 0 and standard deviation $\sqrt{11}\delta$. We maximize the log likelihood by setting the derivative equal to 0:
+$$-\frac{1}{2} \frac{d}{d\delta} \left(\log(2\pi 11\delta^2) + \frac{5^2}{11\delta^2}\right)=\frac{2(\delta^2 - 5^2)}{\delta^3}.$$ The $\delta$ which maximizes this expression is $\delta = \frac{5}{\sqrt{11}}\approx 1.5$. 
 
+Similarly, the $\alpha$ and $\beta$ parameters for the Gamma prior for the variance is determined by looking at the standard deviation of the high school grades. To keep it simple, we choose the 1. year high school English grades in 2020 (taken from udir.no). Note that we only consider the passing grades, as students which do not pass a subject cannot apply for higher education. 
+
+```{r}
+grades_english <- c(2.4, 11.6, 34.8, 37.8, 13.1)
+grades_english <- grades_english/sum(grades_english) #normalize since we do not consider fail.
+mu_grades <- sum(grades_english*seq(20, 60, by = 10))
+var_grades <- sum((seq(20, 60, by = 10) - mu_grades)^2*grades_english)
+std_grades <- sqrt(var_grades)
+
+```
+Thus, the standard deviation of  $10\times$grades is `r round(std_grades, 2)`. However, since the point score is a sum of grades of multiple subjects, there should be some variance in the prior for $\sigma$. If the grades of a student were independent, we could for example just multiply the standard deviation by the number of courses to obtain the variance in the point scores. However, the grades of a student are highly correlated. Again, to keep it short, we choose (a bit heuristically) the mean to be $\mathrm{E}[\sigma] = \alpha / \beta =$ `r round(std_grades, 1)` by setting $\beta = 1$ and $\alpha =$ `r round(std_grades, 1)`.
+
+Now, we are ready to carry out the estimation of the admission score and underlying mean and variance of the applicants by year:
 
 ```{r, message=FALSE, warning=FALSE}
 require(tidyverse)
 law <- read_csv("law.csv") %>% rename(c_t = Poenggrense,
                                       a_t = Søkere,
                                       s_t = Plasser) %>% mutate(y_t = 2009:2020)
-ggplot(law, aes(x = y_t, y = c_t)) +
-  geom_line()
 
 objective <- function(c, mu, sigma, a, s){
   abs(s - a*(1-pnorm(q = c, mean = mu, sd = sigma)))
@@ -90,10 +101,10 @@ prior_mu_1_mu <- 40 #Prior mean for the average point score in 2009
 prior_mu_1_sig <- 5 #Prior std.dev for the average point score in 2009
 delta_mu_sig <- 5/sqrt(11) #Std.dev of the mu_t+1 - mu_t random walk prior
 
-sig_alpha <- 10
+sig_alpha <- std_grades
 sig_beta <- 1 #scale 
 
-iterations <- 1e4
+iterations <- 1e5
 eps <- 3
 
 a_t <- law %>% select(a_t) %>% pull()
@@ -108,6 +119,8 @@ sigma <- 0
 
 acc_mu <- matrix(0, nrow = iterations, ncol = n_yrs)
 acc_sigma <- rep(0, iterations)
+
+set.seed(2021)
 
 for(i in 1:iterations){
   mu[1] <- rnorm(1, prior_mu_1_mu, prior_mu_1_sig)
@@ -145,18 +158,24 @@ ggplot(result, aes(x = Year, y = c_t)) +
 
 Now, when we have a model which adequately describes the observed data, now to the actual useful part. Let's predict the admission cut-off for the law programme in 2021, for which we only need the number of applicants and seats:
 
-*$a = 1929$ *applicants*.
-*$s = 234$ *available seats*.
+*$a_{21} = 1929$,
+*$s_{21} = 234$.
 
-We need to estimate $C_{21}|c_{09:20}, a_{09:20}, s_{09:20}$. This can be done by simulation as usual, through the identity
-$$\mathrm{E}[c_{21}|c_{09:20}, a_{09:21}, s_{09:21}] = \int_{c_{21}} c_{21}p(c_{21}|c_{09:20}, a_{09:21}, s_{09:21})d c_{21} = \int_{c_{21}}c_{21}p(c_{21}|\mu_{21}, \sigma, a_{21}, s_{21})p(\mu_{09:21}, \sigma|c_{09:20}, a_{09:21}, s_{09:21})d c_{21}$$ with $\theta = (\mu_{2021}, \sigma).$ Note that $$p(\mu_{09:21}, \sigma|c_{09:20}, a_{09:21}, s_{09:21}) = p(\mu_{21}|\mu_{20})p(\mu_{09:20}, \sigma|c_{09:20}, a_{09:20}, s_{09:20}).$$ Further, we already have samples from $$p(\mu_{09:20}, \sigma|c_{09:20}, a_{09:20}, s_{09:20}).$$ Thus, to estimate $p(c_{21}|c_{09:20}, a_{09:20}, s_{09:20})$ we can draw a sample from our set of posterior samples, then draw $\mu_{21}$ from $p(\mu_{21}|\mu_{20})$ (hyperparameters omitted), and then we can calculate $$c_{21}|\mu_{21}, \sigma, a_{21}, s_{21}.$$
+We need to estimate $\mathrm{E}[C_{21}|c_{09:20}, a_{09:21}, s_{09:21}]$. This can be done by simulation as usual, through the identity
+
+\begin{align}
+&\mathrm{E}[C_{21}|c_{09:20}, a_{09:21}, s_{09:21}] = \int_{c_{21}} c_{21}p(c_{21}|c_{09:20}, a_{09:21}, s_{09:21})d c_{21}\\
+&=\int_{c_{21}}c_{21}p(c_{21}|\mu_{21}, \sigma, a_{21}, s_{21})p(\mu_{09:21}, \sigma|c_{09:20}, a_{09:21}, s_{09:21})d c_{21}
+\end{align}
+
+Note that $$p(\mu_{09:21}, \sigma|c_{09:20}, a_{09:21}, s_{09:21}) = p(\mu_{21}|\mu_{20})p(\mu_{09:20}, \sigma|c_{09:20}, a_{09:20}, s_{09:20}).$$ Further, we already have samples from $$p(\mu_{09:20}, \sigma|c_{09:20}, a_{09:20}, s_{09:20}).$$ Thus, to estimate $p(c_{21}|c_{09:20}, a_{09:20}, s_{09:20})$ we can draw a sample from our set of posterior samples, then draw $\mu_{21}$ from $p(\mu_{21}|\mu_{20})$ (hyperparameters omitted), and then we can calculate $$c_{21}|\mu_{21}, \sigma, a_{21}, s_{21}.$$
 
 ```{r}
 a_21 <- 1929
 s_21 <- 234
 q_21 <- (a_21 - s_21)/a_21
 
-iterations <- 1e4
+iterations <- 1e5
 sim_c_21 <- rep(0, iterations)
 ids <- sample(nrow(acc_mu), iterations, replace = T)
 
@@ -174,4 +193,9 @@ ggplot(result, aes(x = Year, y = c_t)) +
   geom_line(data = tibble(Year = 2009:2020, mu = post_mu), aes(x = Year, y = mu)) +
   geom_errorbar(data = predicted, aes(x = Year, ymin = c_t - 0.67*sigma, ymax = c_t + 0.67*sigma))
 ```
+
+We see that the estimated admission cutpoints is not too far of the observed ones, but remember that 
+we are estimating a complex thing using 12 observations. Whats more interesting than the cutpoints themselves perhaps, is the change in mean score for the applicants in this model. This matches very well with the development in the high school grades of students in general. 
+
+We have also plotted the point estimate of the admission cutpoint in 2021 with a 50\% credible interval.
 
